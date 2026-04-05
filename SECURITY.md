@@ -2,11 +2,9 @@
 
 ## Supported Versions
 
-We actively support the following versions with security updates:
-
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
+| 0.x.x   | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
@@ -18,9 +16,9 @@ Please do not report security vulnerabilities through public GitHub issues, disc
 
 ### 2. Report Privately
 
-Send an email to **security@boldminds.tech** with the following information:
+Send an email to **security@boldminds.tech** with:
 
-- **Subject**: Security Vulnerability in bold-minds/[REPO_NAME]
+- **Subject**: Security Vulnerability in bold-minds/list
 - **Description**: Detailed description of the vulnerability
 - **Steps to Reproduce**: Clear steps to reproduce the issue
 - **Impact**: Potential impact and severity assessment
@@ -32,56 +30,49 @@ Send an email to **security@boldminds.tech** with the following information:
 - **Status Update**: Within 7 days
 - **Resolution**: Varies based on complexity, typically within 30 days
 
-### 4. Disclosure Process
-
-1. We will acknowledge receipt of your vulnerability report
-2. We will investigate and validate the vulnerability
-3. We will develop and test a fix
-4. We will coordinate disclosure timing with you
-5. We will release a security update
-6. We will publicly acknowledge your responsible disclosure (if desired)
-
 ## Security Considerations
 
-[Replace this section with security considerations specific to your project]
+`list` is a pure-computation library with a very small attack surface:
 
-### [PROJECT_SPECIFIC_SECURITY_SECTION]
+- **No network I/O.** `list` does not make network calls.
+- **No file I/O.** `list` does not read or write files.
+- **No reflection.** All operations use Go's `comparable` type constraint and concrete map lookups.
+- **No external dependencies.** Pure Go stdlib.
+- **Immutable.** `list` never modifies input slices.
+- **Nil-safe.** All functions handle nil inputs without panicking.
 
-[Add project-specific security considerations here. Examples:]
+### Known runtime-panic sources from caller misuse
 
-- **Input Validation**: Always validate external inputs
-- **Authentication**: Implement proper authentication mechanisms
-- **Authorization**: Ensure proper access controls
-- **Data Protection**: Handle sensitive data appropriately
-- **Rate Limiting**: Implement rate limiting for public APIs
-- **Error Handling**: Avoid exposing sensitive information in error messages
+`list` does not panic on any documented input. However, there are two
+situations where caller mistakes can cause Go runtime panics that propagate
+through `list`:
 
-### Best Practices
+1. **Non-comparable interface values.** If a caller passes a slice of `any`
+   containing dynamic values whose concrete type is not comparable (e.g., a
+   `[]int` stored inside an `any`), comparing those values causes a Go
+   runtime panic in the `map[any]struct{}` used for deduplication. `list`
+   does not recover these panics. Callers must ensure that interface-typed
+   slices contain only comparable dynamic values.
 
-1. **[PRACTICE_1]**: [Description of security practice]
-2. **[PRACTICE_2]**: [Description of security practice]
-3. **[PRACTICE_3]**: [Description of security practice]
-4. **Input Validation**: Always validate inputs from external sources
-5. **Error Handling**: Properly handle all error returns from library functions
+2. **Extremely large inputs.** Map allocation failure (out of memory) on
+   multi-billion-element slices would produce a Go runtime panic. `list`
+   does not preallocate based on caller-controlled size hints, so this is
+   only a concern for genuinely huge inputs.
 
-### Known Limitations
+### NaN handling
 
-[List any known security limitations of your project]
-
-- **[LIMITATION_1]**: [Description]
-- **[LIMITATION_2]**: [Description]
+Floating-point NaN values follow Go's map-key semantics (NaN is not equal
+to NaN). This means `list` cannot deduplicate, intersect, or match NaN
+values — each NaN is treated as a distinct element. This is documented
+behavior, not a security issue, but callers processing untrusted float
+data should be aware.
 
 ## Security Updates
 
-Security updates will be:
-
-- Released as patch versions (e.g., 1.0.1)
-- Documented in the CHANGELOG.md
-- Announced through GitHub releases
-- Tagged with security labels
+Security updates will be released as patch versions (e.g., 0.1.1),
+documented in CHANGELOG.md, and announced through GitHub releases.
 
 ## Acknowledgments
 
-We appreciate responsible disclosure and will acknowledge security researchers who help improve the security of this project.
-
-Thank you for helping keep our project and users safe!
+We appreciate responsible disclosure and will acknowledge security
+researchers who help improve the security of this project.
