@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-04-05
+
 ### Changed
 
 - **Scope expanded** from "set operations on Go slices" to "list operations on Go slices" — the package now covers positional extraction, sampling, reordering, sorting, zero stripping, and value substitution in addition to the original set algebra. This is the architecturally honest home for these operations (Ruby, Python, and JS all treat positional and set ops as methods on the same list type), and it avoids forcing callers to import a separate repo to operate on the same data shape. Package doc comment and README rewritten to reflect the new scope. This is purely additive — every v0.1.x call site continues to work unchanged.
