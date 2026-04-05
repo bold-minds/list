@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `SymmetricDifference[T comparable](a, b []T) []T` — unique elements present in `a` or `b` but not both, i.e. `(a ∪ b) − (a ∩ b)`
+
 ## [0.1.0] — Initial release
 
 ### Added
@@ -17,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Without[T comparable](s []T, items ...T) []T` — remove specific values, preserves remaining duplicates
 - Full support for custom comparable types (`type UserID string`), struct types with comparable fields, and pointer types
 - Documented NaN semantics for floating-point slices (follows Go's map-key rules)
-- 100% test coverage including adversarial edge cases: nil/empty handling, immutability, result-aliasing checks, NaN behavior, struct key correctness
+- 100% statement coverage (enforced in CI via `COVERAGE_THRESHOLD=100`) including adversarial edge cases: nil/empty handling, immutability, result-aliasing checks, NaN behavior, struct key correctness, pointer-identity semantics, and runtime panics on non-comparable interface values
 - Zero external dependencies — pure stdlib
 
 ### Deliberate non-goals
@@ -27,4 +30,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No NaN-aware float operations — caller must pre-process slices if NaN matching is required
 
 ### Requires
-- Go 1.21 or later
+- Go 1.23 or later

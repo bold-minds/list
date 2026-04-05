@@ -10,7 +10,9 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: '1.21'
+  # Primary Go version — used by the badges job and for artifact handoff.
+  # The test matrix fans out across go-version below.
+  GO_VERSION: '1.23'
   GOLANGCI_LINT_VERSION: 'v2.0.2'
 
 jobs:
@@ -21,14 +23,20 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
+        # Library code: test on the oldest supported Go version AND the
+        # latest stable, so we catch generics-inference regressions and
+        # stdlib drift before downstream consumers do.
+        go-version: [ '1.23', '1.24' ]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      # Actions pinned by commit SHA (Dependabot keeps them updated).
+      # Tag comments document what version the SHA corresponds to.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ matrix.go-version }}
 
       # Build validation (cross-platform).
       # Pure-stdlib libraries have no go.sum, so we only diff go.mod.
@@ -38,20 +46,17 @@ jobs:
           go mod tidy
           git diff --exit-code go.mod
 
-      - name: Run tests (Unix)
-        if: runner.os != 'Windows'
+      # Race detector works on Windows GitHub-hosted runners; unify the
+      # test command across all OSes so coverage is comparable.
+      - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
-
-      - name: Run tests (Windows)
-        if: runner.os == 'Windows'
-        run: go test -v -coverprofile="coverage.out" ./...
 
       - name: Run benchmarks
         run: go test -bench=. -benchmem ./...
 
       - name: Upload coverage artifact
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.24'
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
         with:
           name: coverage-out
           path: coverage.out
@@ -64,20 +69,26 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # Serialize badge commits: if two pushes land close together, the
+    # second job would otherwise race `git push origin main` with the
+    # first and fail on non-fast-forward. cancel-in-progress:false keeps
+    # the earlier run so its badges still land.
+    concurrency:
+      group: badges-main
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: read
-      security-events: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Download coverage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: coverage-out
 
@@ -87,6 +98,10 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           mkdir -p .github/badges
+
+          # Ensure `go install` targets land on PATH even on self-hosted
+          # runners where $GOPATH/bin is not pre-added.
+          export PATH="$(go env GOPATH)/bin:$PATH"
 
           # Install pinned golangci-lint (never @latest in CI).
           go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
@@ -101,16 +116,16 @@ jobs:
             else
               COLOR="red"
             fi
-            echo '{"schemaVersion":1,"label":"coverage","message":"'$COVERAGE'%","color":"'$COLOR'"}' > .github/badges/coverage.json
+            echo '{"schemaVersion":1,"label":"coverage","message":"'"$COVERAGE"'%","color":"'"$COLOR"'"}' > .github/badges/coverage.json
           fi
 
           # Go version badge
-          GO_VERSION=$(go version | grep -oE 'go[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
-          echo '{"schemaVersion":1,"label":"Go","message":"'$GO_VERSION'","color":"00ADD8"}' > .github/badges/go-version.json
+          GO_VER=$(go version | grep -oE 'go[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+          echo '{"schemaVersion":1,"label":"Go","message":"'"$GO_VER"'","color":"00ADD8"}' > .github/badges/go-version.json
 
           # Last updated badge
           LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
-          echo '{"schemaVersion":1,"label":"last updated","message":"'$LAST_COMMIT_DATE'","color":"teal"}' > .github/badges/last-updated.json
+          echo '{"schemaVersion":1,"label":"last updated","message":"'"$LAST_COMMIT_DATE"'","color":"teal"}' > .github/badges/last-updated.json
 
           # golangci-lint badge
           if golangci-lint run; then
@@ -120,30 +135,29 @@ jobs:
             if [[ $ISSUES -eq 0 ]]; then
               echo '{"schemaVersion":1,"label":"golangci-lint","message":"passing","color":"brightgreen"}' > .github/badges/golangci-lint.json
             else
-              echo '{"schemaVersion":1,"label":"golangci-lint","message":"'$ISSUES' issues","color":"red"}' > .github/badges/golangci-lint.json
+              echo '{"schemaVersion":1,"label":"golangci-lint","message":"'"$ISSUES"' issues","color":"red"}' > .github/badges/golangci-lint.json
             fi
           fi
 
-          # Security/dependabot badge — queries THIS repo via $REPO env var
-          DEPENDABOT_ALERTS=$(gh api "repos/$REPO/dependabot/alerts" --jq 'length' 2>/dev/null || echo "0")
-          CODE_SCANNING_ALERTS=$(gh api "repos/$REPO/code-scanning/alerts" --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
-          TOTAL_ALERTS=$((DEPENDABOT_ALERTS + CODE_SCANNING_ALERTS))
+          # Dependabot PR badge — we dropped the Dependabot alerts API call
+          # because the default GITHUB_TOKEN does not grant read access to
+          # /repos/{owner}/{repo}/dependabot/alerts (that endpoint requires
+          # a PAT with security_events scope). The API call silently 403'd
+          # and the badge falsely showed "all clear" regardless of state.
+          # Reporting open Dependabot PR count is faithful to what this
+          # workflow token can actually observe.
           OPEN_PRS=$(gh pr list --author "app/dependabot" --state open --json number --jq 'length' 2>/dev/null || echo "0")
-
-          if [[ $TOTAL_ALERTS -gt 0 ]]; then
-            if [[ $DEPENDABOT_ALERTS -gt 0 && $CODE_SCANNING_ALERTS -gt 0 ]]; then
-              echo '{"schemaVersion":1,"label":"security","message":"'$TOTAL_ALERTS' alerts","color":"red"}' > .github/badges/dependabot.json
-            elif [[ $DEPENDABOT_ALERTS -gt 0 ]]; then
-              echo '{"schemaVersion":1,"label":"security","message":"'$DEPENDABOT_ALERTS' dependency alerts","color":"red"}' > .github/badges/dependabot.json
-            else
-              echo '{"schemaVersion":1,"label":"security","message":"'$CODE_SCANNING_ALERTS' code alerts","color":"red"}' > .github/badges/dependabot.json
-            fi
-          elif [[ $OPEN_PRS -gt 0 ]]; then
-            echo '{"schemaVersion":1,"label":"dependabot","message":"'$OPEN_PRS' updates","color":"blue"}' > .github/badges/dependabot.json
+          if [[ $OPEN_PRS -gt 0 ]]; then
+            echo '{"schemaVersion":1,"label":"dependabot","message":"'"$OPEN_PRS"' updates","color":"blue"}' > .github/badges/dependabot.json
           else
-            echo '{"schemaVersion":1,"label":"security","message":"all clear","color":"brightgreen"}' > .github/badges/dependabot.json
+            echo '{"schemaVersion":1,"label":"dependabot","message":"up to date","color":"brightgreen"}' > .github/badges/dependabot.json
           fi
 
+      # Note: `[skip ci]` in the commit message suppresses the next workflow
+      # run on this push, so badge commits intentionally do not retrigger
+      # tests. This means badge updates are not themselves covered by branch
+      # protection status checks — acceptable because badges are derived
+      # outputs, not source changes.
       - name: Commit badges to main
         env:
           RUN_NUMBER: ${{ github.run_number }}

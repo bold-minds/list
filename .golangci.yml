@@ -57,7 +57,6 @@ linters:
     paths:
       - third_party$
       - builtin$
-      - examples$
 issues:
   max-same-issues: 50
 formatters:
@@ -66,4 +65,3 @@ formatters:
     paths:
       - third_party$
       - builtin$
-      - examples$

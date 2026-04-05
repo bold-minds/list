@@ -24,7 +24,7 @@ START_TIME=$(date +%s)
 
 # 🔧 Configuration
 MODE=${1:-"local"}  # local|ci
-COVERAGE_THRESHOLD=${COVERAGE_THRESHOLD:-80}
+COVERAGE_THRESHOLD=${COVERAGE_THRESHOLD:-100}
 TEST_TIMEOUT=${TEST_TIMEOUT:-10m}
 INTEGRATION_TAG=${INTEGRATION_TAG:-integration}
 SKIP_INTEGRATION=${SKIP_INTEGRATION:-false}  # Flag to disable integration tests
@@ -47,7 +47,10 @@ print_step() {
 print_success() {
     local step_name="$1"
     echo -e "${GREEN}✅ $step_name: PASSED${NC}"
-    ((PASSED_STEPS++))
+    # Use += not post-increment: under `set -e`, ((x++)) exits with status 1
+    # when x was 0 (returns the *old* value), which would kill this script
+    # the first time any counter ticked from 0 to 1.
+    PASSED_STEPS=$((PASSED_STEPS + 1))
 }
 
 print_failure() {
@@ -55,7 +58,7 @@ print_failure() {
     local error_msg="$2"
     echo -e "${RED}❌ $step_name: FAILED${NC}"
     echo -e "${RED}   Error: $error_msg${NC}"
-    ((FAILED_STEPS++))
+    FAILED_STEPS=$((FAILED_STEPS + 1))
 }
 
 print_skipped() {
@@ -63,13 +66,13 @@ print_skipped() {
     local reason="$2"
     echo -e "${YELLOW}⏭️  $step_name: SKIPPED${NC}"
     echo -e "${YELLOW}   Reason: $reason${NC}"
-    ((SKIPPED_STEPS++))
+    SKIPPED_STEPS=$((SKIPPED_STEPS + 1))
 }
 
 print_warning() {
     local message="$1"
     echo -e "${YELLOW}⚠️  Warning: $message${NC}"
-    ((WARNING_COUNT++))
+    WARNING_COUNT=$((WARNING_COUNT + 1))
 }
 
 print_info() {
@@ -84,7 +87,7 @@ run_step() {
     local icon="$3"
     local skip_reason="${4:-}"
     
-    ((TOTAL_STEPS++))
+    TOTAL_STEPS=$((TOTAL_STEPS + 1))
     
     # Check if step should be skipped
     if [[ -n "$skip_reason" ]]; then
@@ -113,7 +116,7 @@ check_environment() {
     
     local go_version
     go_version=$(go version | grep -oE 'go[0-9]+\.[0-9]+' | head -1 | sed 's/^go//')
-    local required_version="1.21"
+    local required_version="1.23"
     
     if [[ $(echo -e "$required_version\n$go_version" | sort -V | head -n1) != "$required_version" ]]; then
         echo "Go version $go_version is below required $required_version"

@@ -667,6 +667,116 @@ func TestComposition_CommonTags(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Pointer identity semantics
+// =============================================================================
+
+// TestPointerIdentity documents that pointer types compare by address, not by
+// pointed-at value. Two *int pointing at distinct ints with the same value
+// are distinct keys.
+func TestPointerIdentity(t *testing.T) {
+	a, b := new(int), new(int)
+	*a, *b = 5, 5
+	got := list.Unique([]*int{a, b, a})
+	if len(got) != 2 {
+		t.Errorf("expected 2 distinct pointers (identity, not value), got %d", len(got))
+	}
+}
+
+// =============================================================================
+// Runtime panic on non-comparable interface values
+// =============================================================================
+
+// TestNonComparableInterfacePanics verifies the package-doc claim that
+// interface slices carrying non-comparable dynamic values (e.g. slices)
+// panic at runtime rather than silently succeeding. If this test stops
+// panicking, the package docs are lying.
+func TestNonComparableInterfacePanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected runtime panic comparing non-comparable interface values")
+		}
+	}()
+	// []int is not comparable; wrapping it in any defers the check to runtime.
+	_ = list.Unique([]any{[]int{1}, []int{1}})
+}
+
+// =============================================================================
+// SymmetricDifference
+// =============================================================================
+
+func TestSymmetricDifference_Basic(t *testing.T) {
+	got := list.SymmetricDifference([]int{1, 2, 3, 4}, []int{3, 4, 5, 6})
+	want := []int{1, 2, 5, 6}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestSymmetricDifference_Disjoint(t *testing.T) {
+	got := list.SymmetricDifference([]int{1, 2}, []int{3, 4})
+	want := []int{1, 2, 3, 4}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestSymmetricDifference_Identical(t *testing.T) {
+	got := list.SymmetricDifference([]int{1, 2, 3}, []int{1, 2, 3})
+	want := []int{}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestSymmetricDifference_EmptyA(t *testing.T) {
+	got := list.SymmetricDifference([]int{}, []int{1, 2, 2, 3})
+	want := []int{1, 2, 3}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestSymmetricDifference_EmptyB(t *testing.T) {
+	got := list.SymmetricDifference([]int{1, 2, 2, 3}, []int{})
+	want := []int{1, 2, 3}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestSymmetricDifference_NilInputs(t *testing.T) {
+	got := list.SymmetricDifference[int](nil, nil)
+	if got == nil {
+		t.Error("expected non-nil empty slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty result, got %v", got)
+	}
+}
+
+func TestSymmetricDifference_DeduplicatesWithinInputs(t *testing.T) {
+	got := list.SymmetricDifference([]int{1, 1, 2, 2}, []int{2, 3, 3})
+	want := []int{1, 3}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestSymmetricDifference_Immutability(t *testing.T) {
+	a := []int{1, 2, 3}
+	b := []int{3, 4, 5}
+	aOrig := append([]int(nil), a...)
+	bOrig := append([]int(nil), b...)
+	_ = list.SymmetricDifference(a, b)
+	if !reflect.DeepEqual(a, aOrig) {
+		t.Errorf("input a mutated: got %v, want %v", a, aOrig)
+	}
+	if !reflect.DeepEqual(b, bOrig) {
+		t.Errorf("input b mutated: got %v, want %v", b, bOrig)
+	}
+}
+
 func TestComposition_UniqueExcludingStopwords(t *testing.T) {
 	words := []string{"the", "quick", "brown", "fox", "the", "lazy", "dog", "the"}
 	stopwords := []string{"the", "a", "an"}

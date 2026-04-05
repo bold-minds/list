@@ -13,18 +13,21 @@ var (
 )
 
 func BenchmarkUnique_Small(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = list.Unique(smallA)
 	}
 }
 
 func BenchmarkUnique_WithDupes(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = list.Unique(dupes)
 	}
 }
 
 func BenchmarkUnion_Two(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = list.Union(smallA, smallB)
 	}
@@ -32,12 +35,15 @@ func BenchmarkUnion_Two(b *testing.B) {
 
 func BenchmarkUnion_Three(b *testing.B) {
 	third := []int{15, 16, 17, 18}
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = list.Union(smallA, smallB, third)
 	}
 }
 
 func BenchmarkIntersect_Two(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = list.Intersect(smallA, smallB)
 	}
@@ -45,24 +51,36 @@ func BenchmarkIntersect_Two(b *testing.B) {
 
 func BenchmarkIntersect_Three(b *testing.B) {
 	third := []int{3, 4, 5, 6, 7}
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = list.Intersect(smallA, smallB, third)
 	}
 }
 
+func BenchmarkSymmetricDifference(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = list.SymmetricDifference(smallA, smallB)
+	}
+}
+
 func BenchmarkMinus_Basic(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = list.Minus(smallA, smallB)
 	}
 }
 
 func BenchmarkWithout_SingleItem(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = list.Without(smallA, 5)
 	}
 }
 
 func BenchmarkWithout_MultipleItems(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = list.Without(smallA, 1, 3, 5, 7, 9)
 	}

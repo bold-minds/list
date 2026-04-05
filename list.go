@@ -1,6 +1,6 @@
 // Package list provides set operations on Go slices.
 //
-// Unique, Union, Intersect, Minus, and Without treat slices as sets,
+// Unique, Union, Intersect, SymmetricDifference, Minus, and Without treat slices as sets,
 // returning new slices with predictable, stable output ordering. Every
 // operation is nil-safe, never panics on nil or empty input, and never
 // mutates its input. Empty results are returned as non-nil empty slices,
@@ -20,6 +20,7 @@
 //   - Unique cannot deduplicate NaN values
 //   - Union cannot deduplicate NaN values across slices
 //   - Intersect can never match NaN against NaN
+//   - SymmetricDifference treats every NaN as distinct
 //   - Minus cannot remove NaN values
 //   - Without cannot remove NaN values
 //
@@ -60,8 +61,12 @@ func Unique[T comparable](s []T) []T {
 // the order of first occurrence as each slice is walked in turn. Variadic —
 // accepts zero or more slices.
 func Union[T comparable](slices ...[]T) []T {
-	seen := make(map[T]struct{})
-	result := []T{}
+	total := 0
+	for _, s := range slices {
+		total += len(s)
+	}
+	seen := make(map[T]struct{}, total)
+	result := make([]T, 0, total)
 	for _, s := range slices {
 		for _, v := range s {
 			if _, exists := seen[v]; !exists {
@@ -86,9 +91,9 @@ func Intersect[T comparable](slices ...[]T) []T {
 
 	// Count how many slices each element appears in, counting each
 	// element at most once per slice.
-	counts := make(map[T]int)
+	counts := make(map[T]int, len(slices[0]))
 	for i, s := range slices {
-		seen := make(map[T]struct{})
+		seen := make(map[T]struct{}, len(s))
 		for _, v := range s {
 			if _, exists := seen[v]; exists {
 				continue
@@ -97,22 +102,67 @@ func Intersect[T comparable](slices ...[]T) []T {
 			if i == 0 {
 				counts[v] = 1
 			} else if counts[v] == i {
+				// counts[v] == i means v has appeared in every previous
+				// slice; only then do we count this slice's occurrence.
 				counts[v]++
 			}
 		}
 	}
 
 	// Emit elements present in all slices, in order from the first slice.
-	result := []T{}
-	emitted := make(map[T]struct{})
+	// We consume the counts map itself as the "already emitted" marker by
+	// deleting entries as we emit them, avoiding a second map allocation
+	// and a second lookup per element.
+	n := len(slices)
+	result := make([]T, 0, len(counts))
 	for _, v := range slices[0] {
-		if _, already := emitted[v]; already {
+		if counts[v] == n {
+			result = append(result, v)
+			delete(counts, v)
+		}
+	}
+	return result
+}
+
+// SymmetricDifference returns the unique elements present in a or b but not
+// in both — i.e., (a ∪ b) − (a ∩ b). Order is taken from a first, then b.
+// Binary — always exactly two arguments.
+func SymmetricDifference[T comparable](a, b []T) []T {
+	if len(a) == 0 {
+		return Unique(b)
+	}
+	if len(b) == 0 {
+		return Unique(a)
+	}
+	inA := make(map[T]struct{}, len(a))
+	for _, v := range a {
+		inA[v] = struct{}{}
+	}
+	inB := make(map[T]struct{}, len(b))
+	for _, v := range b {
+		inB[v] = struct{}{}
+	}
+	result := make([]T, 0, len(a)+len(b))
+	emitted := make(map[T]struct{}, len(a)+len(b))
+	for _, v := range a {
+		if _, both := inB[v]; both {
 			continue
 		}
-		if counts[v] == len(slices) {
-			emitted[v] = struct{}{}
-			result = append(result, v)
+		if _, done := emitted[v]; done {
+			continue
 		}
+		emitted[v] = struct{}{}
+		result = append(result, v)
+	}
+	for _, v := range b {
+		if _, both := inA[v]; both {
+			continue
+		}
+		if _, done := emitted[v]; done {
+			continue
+		}
+		emitted[v] = struct{}{}
+		result = append(result, v)
 	}
 	return result
 }
