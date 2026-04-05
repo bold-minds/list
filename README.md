@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/bold-minds/list.svg)](https://pkg.go.dev/github.com/bold-minds/list)
 [![Build](https://img.shields.io/github/actions/workflow/status/bold-minds/list/test.yaml?branch=main&label=tests)](https://github.com/bold-minds/list/actions/workflows/test.yaml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/bold-minds/list)](go.mod)
-[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/clairevnext/cfd5d708ae84dcc9be8ed2bcf09b16c8/raw/coverage.json)](https://github.com/bold-minds/list/actions/workflows/test.yaml)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bold-admin/dd52b54365ac3d2b99754f68a4bcb30d/raw/coverage.json)](https://github.com/bold-minds/list/actions/workflows/test.yaml)
 
 **Set operations on Go slices.**
 
