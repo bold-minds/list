@@ -487,6 +487,79 @@ func TestResultIsNotAliased(t *testing.T) {
 			t.Error("Unique returned a slice aliased to input")
 		}
 	}
+
+	// Union — mutating output must not touch any input slice
+	ua := []int{1, 2, 3}
+	ub := []int{4, 5, 6}
+	uOut := list.Union(ua, ub)
+	uOut[0] = 999
+	if ua[0] == 999 || ub[0] == 999 {
+		t.Error("Union returned a slice aliased to an input")
+	}
+
+	// Intersect — mutating output must not touch any input slice
+	ia := []int{1, 2, 3, 4}
+	ib := []int{2, 3, 5}
+	iOut := list.Intersect(ia, ib)
+	if len(iOut) > 0 {
+		iOut[0] = 999
+		if ia[1] == 999 || ib[0] == 999 {
+			t.Error("Intersect returned a slice aliased to an input")
+		}
+	}
+
+	// Minus — mutating output must not touch input a
+	ma := []int{1, 2, 3, 4}
+	mb := []int{2, 4}
+	mOut := list.Minus(ma, mb)
+	if len(mOut) > 0 {
+		mOut[0] = 999
+		if ma[0] == 999 {
+			t.Error("Minus returned a slice aliased to input a")
+		}
+	}
+
+	// SymmetricDifference — mutating output must not touch either input
+	sa := []int{1, 2, 3}
+	sb := []int{3, 4, 5}
+	sOut := list.SymmetricDifference(sa, sb)
+	if len(sOut) > 0 {
+		sOut[0] = 999
+		if sa[0] == 999 || sb[0] == 999 {
+			t.Error("SymmetricDifference returned a slice aliased to an input")
+		}
+	}
+}
+
+// TestSymmetricDifference_OrderingCrossDuplicates pins the emission order
+// when both slices contain duplicates that cross the a/b boundary. The
+// contract is: emit a's unique-to-a elements in a's first-occurrence
+// order, then b's unique-to-b elements in b's first-occurrence order.
+func TestSymmetricDifference_OrderingCrossDuplicates(t *testing.T) {
+	got := list.SymmetricDifference([]int{1, 2, 3, 2}, []int{3, 2, 4, 4, 5})
+	// From a: 1 (unique to a), 2 and 3 are in b, dup 2 skipped
+	// From b: 3 and 2 are in a, 4 unique to b, dup 4 skipped, 5 unique to b
+	want := []int{1, 4, 5}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestIntersect_NilMiddleSlice makes the nil-safety contract explicit:
+// a nil slice in the middle of the variadic list must be treated as
+// empty, yielding an empty intersection (not a panic, not a stale result).
+func TestIntersect_NilMiddleSlice(t *testing.T) {
+	got := list.Intersect(
+		[]int{1, 2, 3},
+		nil,
+		[]int{1, 2, 3},
+	)
+	if got == nil {
+		t.Error("expected non-nil empty slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("got %v, expected empty (nil middle slice)", got)
+	}
 }
 
 // TestNaNSemantics documents and verifies how floating-point NaN values
@@ -775,6 +848,74 @@ func TestSymmetricDifference_Immutability(t *testing.T) {
 	if !reflect.DeepEqual(b, bOrig) {
 		t.Errorf("input b mutated: got %v, want %v", b, bOrig)
 	}
+}
+
+// =============================================================================
+// Fuzz
+// =============================================================================
+
+// FuzzUnique validates Unique against a simple reference implementation
+// and the documented invariants: length non-increasing, every result
+// element comes from the input, no duplicates in the result, and the
+// order matches first-occurrence order in the input.
+func FuzzUnique(f *testing.F) {
+	f.Add([]byte{1, 2, 2, 3, 1, 4})
+	f.Add([]byte{})
+	f.Add([]byte{5, 5, 5, 5, 5})
+	f.Add([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		in := make([]int, len(data))
+		for i, b := range data {
+			in[i] = int(b)
+		}
+
+		got := list.Unique(in)
+
+		if got == nil {
+			t.Fatal("Unique returned nil; contract is non-nil empty")
+		}
+
+		// Reference: preserve first-occurrence order, drop later repeats.
+		seen := make(map[int]struct{}, len(in))
+		want := make([]int, 0, len(in))
+		for _, v := range in {
+			if _, ok := seen[v]; ok {
+				continue
+			}
+			seen[v] = struct{}{}
+			want = append(want, v)
+		}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Unique(%v) = %v, reference = %v", in, got, want)
+		}
+
+		// Invariant: length never exceeds input.
+		if len(got) > len(in) {
+			t.Fatalf("Unique grew the slice: len(got)=%d len(in)=%d", len(got), len(in))
+		}
+
+		// Invariant: result has no duplicates.
+		resSeen := make(map[int]struct{}, len(got))
+		for _, v := range got {
+			if _, dup := resSeen[v]; dup {
+				t.Fatalf("Unique returned duplicate %v: %v", v, got)
+			}
+			resSeen[v] = struct{}{}
+		}
+
+		// Invariant: every result element appears in the input.
+		inSet := make(map[int]struct{}, len(in))
+		for _, v := range in {
+			inSet[v] = struct{}{}
+		}
+		for _, v := range got {
+			if _, ok := inSet[v]; !ok {
+				t.Fatalf("Unique fabricated element %v not in input %v", v, in)
+			}
+		}
+	})
 }
 
 func TestComposition_UniqueExcludingStopwords(t *testing.T) {

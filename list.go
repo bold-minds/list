@@ -6,6 +6,12 @@
 // mutates its input. Empty results are returned as non-nil empty slices,
 // so callers can range over them without nil checks.
 //
+// All functions are safe for concurrent use on shared inputs: they never
+// mutate their arguments, so multiple goroutines may call any function with
+// overlapping or identical input slices without external synchronization.
+// Each call allocates its own result slice, so callers may freely mutate
+// the returned slice without affecting inputs or other callers' results.
+//
 // Every function takes a type parameter T constrained to comparable.
 // This means element types must support the == operator: any primitive
 // type, any pointer, any channel, any interface type, or any struct
