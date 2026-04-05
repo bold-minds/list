@@ -1102,3 +1102,430 @@ func FuzzSymmetricDifference(f *testing.F) {
 		}
 	})
 }
+
+// =============================================================================
+// Positional extraction — FirstN / LastN / Between / At / First / Last
+// =============================================================================
+
+func TestFirstN(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5}
+	if got := list.FirstN(s, 3); !reflect.DeepEqual(got, []int{1, 2, 3}) {
+		t.Errorf("FirstN(3) = %v, want [1 2 3]", got)
+	}
+	if got := list.FirstN(s, 0); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("FirstN(0) = %v, want []", got)
+	}
+	if got := list.FirstN(s, -1); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("FirstN(-1) = %v, want []", got)
+	}
+	if got := list.FirstN(s, 100); !reflect.DeepEqual(got, []int{1, 2, 3, 4, 5}) {
+		t.Errorf("FirstN(100) = %v, want full slice", got)
+	}
+	if got := list.FirstN[int](nil, 3); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("FirstN(nil) = %v, want []", got)
+	}
+	// Result must not alias input.
+	out := list.FirstN(s, 3)
+	out[0] = 999
+	if s[0] == 999 {
+		t.Error("FirstN result aliases input")
+	}
+}
+
+func TestLastN(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5}
+	if got := list.LastN(s, 3); !reflect.DeepEqual(got, []int{3, 4, 5}) {
+		t.Errorf("LastN(3) = %v, want [3 4 5]", got)
+	}
+	if got := list.LastN(s, 0); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("LastN(0) = %v, want []", got)
+	}
+	if got := list.LastN(s, -5); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("LastN(-5) = %v, want []", got)
+	}
+	if got := list.LastN(s, 100); !reflect.DeepEqual(got, []int{1, 2, 3, 4, 5}) {
+		t.Errorf("LastN(100) = %v, want full slice", got)
+	}
+	if got := list.LastN[int](nil, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("LastN(nil) = %v, want []", got)
+	}
+}
+
+func TestBetween(t *testing.T) {
+	s := []int{10, 20, 30, 40, 50}
+	if got := list.Between(s, 1, 4); !reflect.DeepEqual(got, []int{20, 30, 40}) {
+		t.Errorf("Between(1,4) = %v, want [20 30 40]", got)
+	}
+	// Negative start clamps to 0.
+	if got := list.Between(s, -10, 3); !reflect.DeepEqual(got, []int{10, 20, 30}) {
+		t.Errorf("Between(-10,3) = %v, want [10 20 30]", got)
+	}
+	// End beyond length clamps to len.
+	if got := list.Between(s, 2, 100); !reflect.DeepEqual(got, []int{30, 40, 50}) {
+		t.Errorf("Between(2,100) = %v, want [30 40 50]", got)
+	}
+	// Inverted range → empty.
+	if got := list.Between(s, 4, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Between(4,2) = %v, want []", got)
+	}
+	// start == end → empty.
+	if got := list.Between(s, 2, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Between(2,2) = %v, want []", got)
+	}
+	// Empty input.
+	if got := list.Between([]int{}, 0, 3); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Between(empty) = %v, want []", got)
+	}
+	// Result must not alias input.
+	out := list.Between(s, 1, 4)
+	out[0] = 999
+	if s[1] == 999 {
+		t.Error("Between result aliases input")
+	}
+}
+
+func TestAt(t *testing.T) {
+	s := []string{"a", "b", "c", "d"}
+
+	v, ok := list.At(s, 0)
+	if !ok || v != "a" {
+		t.Errorf("At(0) = (%q, %v), want (a, true)", v, ok)
+	}
+	v, ok = list.At(s, 3)
+	if !ok || v != "d" {
+		t.Errorf("At(3) = (%q, %v), want (d, true)", v, ok)
+	}
+	// Negative index counts from the end.
+	v, ok = list.At(s, -1)
+	if !ok || v != "d" {
+		t.Errorf("At(-1) = (%q, %v), want (d, true)", v, ok)
+	}
+	v, ok = list.At(s, -4)
+	if !ok || v != "a" {
+		t.Errorf("At(-4) = (%q, %v), want (a, true)", v, ok)
+	}
+	// Out of range → (zero, false).
+	if _, ok := list.At(s, 4); ok {
+		t.Error("At(4) on len 4 slice should be out of range")
+	}
+	if _, ok := list.At(s, -5); ok {
+		t.Error("At(-5) on len 4 slice should be out of range")
+	}
+	// Empty slice.
+	if _, ok := list.At([]string{}, 0); ok {
+		t.Error("At(empty, 0) should be out of range")
+	}
+	// Nil slice.
+	if _, ok := list.At[string](nil, 0); ok {
+		t.Error("At(nil, 0) should be out of range")
+	}
+}
+
+func TestFirstAndLast(t *testing.T) {
+	s := []int{10, 20, 30}
+
+	if v, ok := list.First(s); !ok || v != 10 {
+		t.Errorf("First = (%v, %v), want (10, true)", v, ok)
+	}
+	if v, ok := list.Last(s); !ok || v != 30 {
+		t.Errorf("Last = (%v, %v), want (30, true)", v, ok)
+	}
+
+	// Empty inputs.
+	if _, ok := list.First([]int{}); ok {
+		t.Error("First(empty) should be false")
+	}
+	if _, ok := list.Last([]int{}); ok {
+		t.Error("Last(empty) should be false")
+	}
+}
+
+// =============================================================================
+// Sampling — Sample / SampleN
+// =============================================================================
+
+func TestSample(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5}
+	// Sample should always return an element that exists in s.
+	for range 50 {
+		v, ok := list.Sample(s)
+		if !ok {
+			t.Fatal("Sample returned ok=false on non-empty slice")
+		}
+		found := false
+		for _, x := range s {
+			if x == v {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Sample returned %v, which is not in the input", v)
+		}
+	}
+
+	// Empty slice.
+	if _, ok := list.Sample([]int{}); ok {
+		t.Error("Sample(empty) should be false")
+	}
+	if _, ok := list.Sample[int](nil); ok {
+		t.Error("Sample(nil) should be false")
+	}
+}
+
+func TestSampleN(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5}
+
+	// n=3 returns exactly 3 distinct elements all drawn from s.
+	got := list.SampleN(s, 3)
+	if len(got) != 3 {
+		t.Errorf("SampleN(3) len = %d, want 3", len(got))
+	}
+	seen := make(map[int]bool)
+	for _, v := range got {
+		if seen[v] {
+			t.Errorf("SampleN(3) returned duplicate %v", v)
+		}
+		seen[v] = true
+		found := false
+		for _, x := range s {
+			if x == v {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("SampleN(3) returned %v not in input", v)
+		}
+	}
+
+	// n=0 / n<0 / empty / nil.
+	if got := list.SampleN(s, 0); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("SampleN(0) = %v, want []", got)
+	}
+	if got := list.SampleN(s, -1); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("SampleN(-1) = %v, want []", got)
+	}
+	if got := list.SampleN([]int{}, 3); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("SampleN(empty) = %v, want []", got)
+	}
+
+	// n >= len: returns a shuffled copy, same length as input, same multiset.
+	got = list.SampleN(s, 10)
+	if len(got) != len(s) {
+		t.Errorf("SampleN(n >= len) len = %d, want %d", len(got), len(s))
+	}
+	gotSorted := list.Sort(got)
+	inSorted := list.Sort(s)
+	if !reflect.DeepEqual(gotSorted, inSorted) {
+		t.Errorf("SampleN(n >= len) multiset = %v, want %v", gotSorted, inSorted)
+	}
+}
+
+// =============================================================================
+// Reordering — Reverse / Shuffle
+// =============================================================================
+
+func TestReverse(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5}
+	if got := list.Reverse(s); !reflect.DeepEqual(got, []int{5, 4, 3, 2, 1}) {
+		t.Errorf("Reverse = %v, want [5 4 3 2 1]", got)
+	}
+	// Single element.
+	if got := list.Reverse([]int{42}); !reflect.DeepEqual(got, []int{42}) {
+		t.Errorf("Reverse(single) = %v, want [42]", got)
+	}
+	// Empty.
+	if got := list.Reverse([]int{}); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Reverse(empty) = %v, want []", got)
+	}
+	if got := list.Reverse[int](nil); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Reverse(nil) = %v, want []", got)
+	}
+	// Input not mutated.
+	in := []int{1, 2, 3}
+	_ = list.Reverse(in)
+	if !reflect.DeepEqual(in, []int{1, 2, 3}) {
+		t.Error("Reverse mutated input")
+	}
+}
+
+func TestShuffle_PreservesMultiset(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	got := list.Shuffle(s)
+	if len(got) != len(s) {
+		t.Errorf("Shuffle len = %d, want %d", len(got), len(s))
+	}
+	// Same multiset.
+	gotSorted := list.Sort(got)
+	inSorted := list.Sort(s)
+	if !reflect.DeepEqual(gotSorted, inSorted) {
+		t.Errorf("Shuffle multiset = %v, want %v", gotSorted, inSorted)
+	}
+	// Input not mutated.
+	if !reflect.DeepEqual(s, []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}) {
+		t.Error("Shuffle mutated input")
+	}
+	// Empty / nil.
+	if got := list.Shuffle([]int{}); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Shuffle(empty) = %v, want []", got)
+	}
+	if got := list.Shuffle[int](nil); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Shuffle(nil) = %v, want []", got)
+	}
+}
+
+// =============================================================================
+// Sorting — Sort / SortDesc / SortBy
+// =============================================================================
+
+func TestSort(t *testing.T) {
+	// Classic numeric-vs-lexicographic check: correct order is
+	// 1, 2, 10, 20, 100, not "1", "10", "100", "2", "20".
+	in := []int{100, 1, 20, 2, 10}
+	want := []int{1, 2, 10, 20, 100}
+	if got := list.Sort(in); !reflect.DeepEqual(got, want) {
+		t.Errorf("Sort(ints) = %v, want %v", got, want)
+	}
+
+	// Strings.
+	if got := list.Sort([]string{"c", "a", "b"}); !reflect.DeepEqual(got, []string{"a", "b", "c"}) {
+		t.Errorf("Sort(strings) = %v, want [a b c]", got)
+	}
+
+	// Floats with NaN: NaN sorts before everything per cmp.Compare.
+	floats := []float64{3.0, math.NaN(), 1.0, 2.0}
+	got := list.Sort(floats)
+	if !math.IsNaN(got[0]) {
+		t.Errorf("Sort(floats) first element = %v, want NaN", got[0])
+	}
+	if !reflect.DeepEqual(got[1:], []float64{1.0, 2.0, 3.0}) {
+		t.Errorf("Sort(floats) tail = %v, want [1 2 3]", got[1:])
+	}
+
+	// Empty / nil.
+	if got := list.Sort([]int{}); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Sort(empty) = %v, want []", got)
+	}
+	if got := list.Sort[int](nil); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Sort(nil) = %v, want []", got)
+	}
+
+	// Input not mutated.
+	in2 := []int{3, 1, 2}
+	_ = list.Sort(in2)
+	if !reflect.DeepEqual(in2, []int{3, 1, 2}) {
+		t.Error("Sort mutated input")
+	}
+}
+
+func TestSortDesc(t *testing.T) {
+	if got := list.SortDesc([]int{1, 2, 10, 20, 100}); !reflect.DeepEqual(got, []int{100, 20, 10, 2, 1}) {
+		t.Errorf("SortDesc = %v, want [100 20 10 2 1]", got)
+	}
+	if got := list.SortDesc([]string{"a", "c", "b"}); !reflect.DeepEqual(got, []string{"c", "b", "a"}) {
+		t.Errorf("SortDesc(strings) = %v, want [c b a]", got)
+	}
+	if got := list.SortDesc([]int{}); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("SortDesc(empty) = %v, want []", got)
+	}
+}
+
+func TestSortBy(t *testing.T) {
+	type person struct {
+		name string
+		age  int
+	}
+	people := []person{
+		{"Alice", 30},
+		{"Bob", 25},
+		{"Carol", 35},
+	}
+	byAge := list.SortBy(people, func(a, b person) int { return a.age - b.age })
+	wantAges := []int{25, 30, 35}
+	for i, p := range byAge {
+		if p.age != wantAges[i] {
+			t.Errorf("SortBy[%d].age = %d, want %d", i, p.age, wantAges[i])
+		}
+	}
+
+	// Input not mutated.
+	if people[0].name != "Alice" || people[1].name != "Bob" || people[2].name != "Carol" {
+		t.Error("SortBy mutated input")
+	}
+
+	// Empty.
+	if got := list.SortBy([]int{}, func(a, b int) int { return a - b }); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("SortBy(empty) = %v, want []", got)
+	}
+}
+
+// =============================================================================
+// Compact — strip zero values
+// =============================================================================
+
+func TestCompact(t *testing.T) {
+	// Strings: "" is the zero value.
+	if got := list.Compact([]string{"a", "", "b", "", "c"}); !reflect.DeepEqual(got, []string{"a", "b", "c"}) {
+		t.Errorf("Compact(strings) = %v, want [a b c]", got)
+	}
+	// Ints: 0 is the zero value.
+	if got := list.Compact([]int{1, 0, 2, 0, 3}); !reflect.DeepEqual(got, []int{1, 2, 3}) {
+		t.Errorf("Compact(ints) = %v, want [1 2 3]", got)
+	}
+	// All zeros.
+	if got := list.Compact([]int{0, 0, 0}); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Compact(all zero) = %v, want []", got)
+	}
+	// No zeros.
+	if got := list.Compact([]int{1, 2, 3}); !reflect.DeepEqual(got, []int{1, 2, 3}) {
+		t.Errorf("Compact(no zeros) = %v, want [1 2 3]", got)
+	}
+	// Empty / nil.
+	if got := list.Compact([]int{}); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Compact(empty) = %v, want []", got)
+	}
+	if got := list.Compact[int](nil); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Compact(nil) = %v, want []", got)
+	}
+}
+
+// =============================================================================
+// Substitution — Replace / ReplaceFirst
+// =============================================================================
+
+func TestReplace(t *testing.T) {
+	if got := list.Replace([]int{1, 2, 3, 2, 1}, 2, 99); !reflect.DeepEqual(got, []int{1, 99, 3, 99, 1}) {
+		t.Errorf("Replace = %v, want [1 99 3 99 1]", got)
+	}
+	// No matches.
+	if got := list.Replace([]int{1, 2, 3}, 99, 0); !reflect.DeepEqual(got, []int{1, 2, 3}) {
+		t.Errorf("Replace(no match) = %v, want [1 2 3]", got)
+	}
+	// Empty / nil.
+	if got := list.Replace([]int{}, 1, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("Replace(empty) = %v, want []", got)
+	}
+
+	// Input not mutated.
+	in := []int{1, 2, 3}
+	_ = list.Replace(in, 2, 99)
+	if !reflect.DeepEqual(in, []int{1, 2, 3}) {
+		t.Error("Replace mutated input")
+	}
+}
+
+func TestReplaceFirst(t *testing.T) {
+	// Only the first matching element is replaced.
+	if got := list.ReplaceFirst([]int{1, 2, 3, 2, 1}, 2, 99); !reflect.DeepEqual(got, []int{1, 99, 3, 2, 1}) {
+		t.Errorf("ReplaceFirst = %v, want [1 99 3 2 1]", got)
+	}
+	// No matches → unchanged copy.
+	if got := list.ReplaceFirst([]int{1, 2, 3}, 99, 0); !reflect.DeepEqual(got, []int{1, 2, 3}) {
+		t.Errorf("ReplaceFirst(no match) = %v, want [1 2 3]", got)
+	}
+	// Empty.
+	if got := list.ReplaceFirst([]int{}, 1, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("ReplaceFirst(empty) = %v, want []", got)
+	}
+}

@@ -5,30 +5,65 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/bold-minds/list)](go.mod)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bold-admin/dd52b54365ac3d2b99754f68a4bcb30d/raw/coverage.json)](https://github.com/bold-minds/list/actions/workflows/test.yaml)
 
-**Set operations on Go slices.**
+**The list operations Go's stdlib leaves out — set algebra, positional extraction, sampling, reordering, sorting, and substitution — as plain generic functions on `[]T`.**
 
-Go's `slices` package covers sorting, searching, and mutation, but it deliberately omits the operations that treat a slice as a set: true deduplication, union, intersection, difference, and removal of specific values. `list` provides those five operations as outcome-named standalone functions.
+Go's `slices` package covers sort, search, and mutation of contiguous ranges. It deliberately omits true deduplication, set algebra across multiple slices, positional range extraction with safe bounds, random sampling, reordering, and value-based substitution — the operations you reach for when *shaping* a slice rather than searching or sorting it in place. `list` provides those operations as one family of outcome-named functions, in one repo, so you don't have to compose three libraries to express a single pipeline.
 
 ```go
-// Before — stdlib slices.Compact only removes CONSECUTIVE duplicates
-//          (you have to sort first, losing original order)
-sorted := slices.Clone(tags)
-slices.Sort(sorted)
-unique := slices.Compact(sorted)
-
-// After — preserves order of first occurrence, no sort required
+// Deduplicate while preserving order of first occurrence
 unique := list.Unique(tags)
+
+// Take the first 10, then sort them ascending, then drop zero values
+top := list.Compact(list.Sort(list.FirstN(entries, 10)))
+
+// Sample 5 random users without replacement
+sample := list.SampleN(users, 5)
+
+// Merge two cohorts, drop the banned set, sort by signup date
+active := list.SortBy(
+    list.Minus(list.Union(admins, editors), banned),
+    func(a, b User) int { return a.SignedUp.Compare(b.SignedUp) },
+)
 ```
 
 ## ✨ Why list?
 
+**Set operations** (comparable):
 - 🧹 **`Unique` is true dedup** — preserves order of first occurrence, unlike `slices.Compact` which only removes consecutive duplicates
 - 🔗 **`Union` across N slices** — variadic, returns unique elements in first-seen order
 - ⚡ **`Intersect` across N slices** — variadic, elements present in every slice
 - ➖ **`Minus` for binary difference** — `list.Minus(allUsers, banned)` reads like English
+- ⇄ **`SymmetricDifference`** — elements in either slice but not both
 - 🚫 **`Without` removes specific values** — not a set operation, just "drop these elements"
-- 🎯 **Order-preserving** — every operation returns elements in a stable, predictable order
-- 🪶 **Five functions, one file, zero dependencies** — only what stdlib genuinely skipped
+
+**Positional** (any) — safe on out-of-range without panics:
+- 🔝 **`FirstN` / `LastN`** — take the head or tail, clamped to length
+- 📐 **`Between(s, start, end)`** — like `s[start:end]` but bounds-clamped, never panics
+- 🎯 **`At(s, i)`** — single-element access with negative indexes (`At(s, -1)` is the last), returns `(T, bool)`
+- **`First` / `Last`** — aliases for `At(s, 0)` / `At(s, -1)`
+
+**Sampling** (any):
+- 🎲 **`Sample` / `SampleN`** — uniformly random selection via `math/rand/v2`
+
+**Reordering** (any):
+- ↩️ **`Reverse`** — new reversed slice, input untouched
+- 🔀 **`Shuffle`** — new randomly-permuted slice, input untouched
+
+**Sorting:**
+- 📊 **`Sort` / `SortDesc`** (`cmp.Ordered`) — new sorted slice, ascending or descending. NaN sorts first ascending, last descending.
+- 🧮 **`SortBy`** (any) — new sorted slice with a caller-supplied `func(a, b T) int` comparator for non-ordered types
+
+**Zero stripping** (comparable):
+- ✨ **`Compact`** — new slice with every element equal to T's zero value removed. (Distinct from stdlib `slices.Compact`, which removes *consecutive duplicates*.)
+
+**Substitution** (comparable):
+- 🔁 **`Replace` / `ReplaceFirst`** — value-based replacement, all occurrences or first only
+
+**Contracts for everything:**
+- 🛡️ **Order-preserving** — every operation has a defined, stable output order
+- 🪶 **Zero dependencies** — pure Go stdlib; `math/rand/v2` for sampling, `slices` for the sort primitives
+- 🔒 **Never panics on valid input** — nil, empty, out-of-range all return empty (non-nil) slices or `(_, false)`
+- 🧊 **Immutable** — no function mutates its input; every result is a fresh allocation
 
 ## 📦 Installation
 
@@ -146,6 +181,104 @@ list.Without([]int{1, 2, 3}, 5)                   // [1 2 3]
 
 `Without` does **not** deduplicate remaining elements — if `1` appears three times in the input and you don't remove `1`, it appears three times in the output. For dedup + removal, chain: `list.Unique(list.Without(s, v))`.
 
+### `FirstN` / `LastN` / `Between` — positional ranges, bounds-clamped
+
+Out-of-range indexes clamp rather than panic. Negative counts become empty slices. Over-large counts return the whole (copied) slice.
+
+```go
+s := []int{10, 20, 30, 40, 50}
+
+list.FirstN(s, 3)           // [10 20 30]
+list.FirstN(s, 100)         // [10 20 30 40 50]  (clamped, not out-of-range)
+list.FirstN(s, 0)           // []
+list.LastN(s, 2)            // [40 50]
+list.Between(s, 1, 4)       // [20 30 40]
+list.Between(s, -10, 100)   // [10 20 30 40 50]  (both bounds clamped)
+list.Between(s, 4, 2)       // []                (inverted range)
+```
+
+`Between` is the non-panicking replacement for `s[start:end]` when indexes come from user input, config, or any source where out-of-range is a possibility rather than a bug.
+
+### `At` / `First` / `Last` — single-element access with negative-index support
+
+Returns `(value, ok)` — `ok` is `false` for empty slices or out-of-range indexes. Negative indexes count from the end, so `At(s, -1)` is the last element.
+
+```go
+s := []string{"a", "b", "c"}
+
+v, ok := list.At(s, 0)       // ("a", true)
+v, ok  = list.At(s, -1)      // ("c", true)
+v, ok  = list.At(s, 99)      // ("", false)
+v, ok  = list.First(s)       // ("a", true)
+v, ok  = list.Last(s)        // ("c", true)
+```
+
+Use `At` when you want to extract a single element defensively without the `if i < len(s) { … }` guard at every call site.
+
+### `Sample` / `SampleN` — random selection
+
+`Sample` returns one uniformly-random element; `SampleN` returns *n* distinct random elements (without replacement) via a Fisher–Yates partial shuffle.
+
+```go
+users := []User{ /* ... */ }
+
+u, ok := list.Sample(users)          // one random user
+five := list.SampleN(users, 5)       // 5 distinct random users
+all  := list.SampleN(users, 1000)    // full shuffle if n >= len
+```
+
+Uses `math/rand/v2`'s goroutine-safe top-level source. **Not cryptographically secure** — fine for tests, fixtures, A/B bucket assignment, and UI randomization; use `crypto/rand` directly if you need unpredictability guarantees.
+
+### `Reverse` / `Shuffle` — reordering without a key
+
+Both return a new slice; the input is untouched.
+
+```go
+list.Reverse([]int{1, 2, 3})  // [3 2 1]
+list.Shuffle(users)           // users in random order, input untouched
+```
+
+### `Sort` / `SortDesc` / `SortBy` — non-mutating sort
+
+Unlike stdlib `slices.Sort` which sorts in place, `list.Sort` returns a fresh sorted slice. The input is never touched — the same guarantee as every other `list` function.
+
+```go
+// Ordered types: cmp.Ordered constraint covers strings, all integer
+// widths, and both float types.
+list.Sort([]int{3, 1, 2})            // [1 2 3]
+list.Sort([]string{"c", "a", "b"})   // [a b c]
+list.SortDesc([]int{3, 1, 2})        // [3 2 1]
+
+// Non-ordered types: supply a comparator.
+users := []User{ /* ... */ }
+byName := list.SortBy(users, func(a, b User) int {
+    return strings.Compare(a.Name, b.Name)
+})
+```
+
+`NaN` sorts before every non-`NaN` value under `Sort` (and after under `SortDesc`), following `cmp.Compare`'s defined behavior.
+
+### `Compact` — strip zero values
+
+Returns a new slice with every element equal to `T`'s zero value removed. This is distinct from stdlib `slices.Compact`, which removes *consecutive duplicates* regardless of value — the naming collision is unfortunate but irreversible.
+
+```go
+list.Compact([]string{"a", "", "b", "", "c"})  // [a b c]
+list.Compact([]int{1, 0, 2, 0, 3})             // [1 2 3]
+list.Compact([]*User{u1, nil, u2, nil})        // [u1 u2]
+```
+
+Requires `T comparable` so the zero value can be detected without reflection.
+
+### `Replace` / `ReplaceFirst` — value-based substitution
+
+```go
+list.Replace([]int{1, 2, 3, 2, 1}, 2, 99)         // [1 99 3 99 1]
+list.ReplaceFirst([]int{1, 2, 3, 2, 1}, 2, 99)    // [1 99 3 2 1]
+```
+
+Positional replacement (`s[i] = v`) is already a one-liner in Go, so `list` does not ship an indexed variant.
+
 ## 🛡️ Safety guarantees
 
 - **Never panics on valid input.** Nil slices, empty slices, and zero-variadic calls all return empty (non-nil) slices.
@@ -201,29 +334,109 @@ Current coverage: 100%.
 ## 📚 API Reference
 
 ```go
-// Unique returns a new slice with duplicate elements removed.
-// Preserves order of first occurrence. Returns an empty (non-nil)
-// slice for nil or empty input.
+// =========================================================================
+// Set operations (T comparable)
+// =========================================================================
+
+// Unique returns a new slice with duplicate elements removed, preserving
+// order of first occurrence.
 func Unique[T comparable](s []T) []T
 
 // Union returns the unique elements across all provided slices,
 // preserving order of first occurrence as each slice is walked in turn.
-// Variadic — accepts zero or more slices.
 func Union[T comparable](slices ...[]T) []T
 
 // Intersect returns the unique elements present in every provided slice.
-// Order is taken from the first slice. Variadic — a single-slice call
-// is equivalent to Unique; a zero-slice call returns an empty slice.
+// Order is taken from the first slice.
 func Intersect[T comparable](slices ...[]T) []T
 
+// SymmetricDifference returns unique elements present in a or b but
+// not both. Order is taken from a first, then b.
+func SymmetricDifference[T comparable](a, b []T) []T
+
 // Minus returns the unique elements of a that are not present in b.
-// Order is taken from a. Binary — always exactly two arguments.
+// Binary — for multi-slice subtraction, compose with Union.
 func Minus[T comparable](a, b []T) []T
 
-// Without returns a new slice with all occurrences of the specified items
-// removed, preserving the order of remaining elements. Does NOT deduplicate
-// remaining elements.
+// Without returns a new slice with all occurrences of the specified
+// items removed. Does NOT deduplicate remaining elements.
 func Without[T comparable](s []T, items ...T) []T
+
+// =========================================================================
+// Positional extraction (T any)
+// =========================================================================
+
+// FirstN returns the first n elements, clamped to valid range.
+func FirstN[T any](s []T, n int) []T
+
+// LastN returns the last n elements, clamped to valid range.
+func LastN[T any](s []T, n int) []T
+
+// Between returns s[start:end] with bounds clamped. Never panics.
+func Between[T any](s []T, start, end int) []T
+
+// At returns the element at index i with ok=true, or (zero, false)
+// on empty slice or out-of-range. Negative indexes count from the end.
+func At[T any](s []T, i int) (T, bool)
+
+// First is an alias for At(s, 0).
+func First[T any](s []T) (T, bool)
+
+// Last is an alias for At(s, -1).
+func Last[T any](s []T) (T, bool)
+
+// =========================================================================
+// Sampling (T any)
+// =========================================================================
+
+// Sample returns one uniformly-random element via math/rand/v2.
+func Sample[T any](s []T) (T, bool)
+
+// SampleN returns n distinct random elements without replacement.
+func SampleN[T any](s []T, n int) []T
+
+// =========================================================================
+// Reordering (T any)
+// =========================================================================
+
+// Reverse returns a new slice in reverse order. Input not mutated.
+func Reverse[T any](s []T) []T
+
+// Shuffle returns a new randomly-permuted slice. Input not mutated.
+func Shuffle[T any](s []T) []T
+
+// =========================================================================
+// Sorting
+// =========================================================================
+
+// Sort returns a new slice sorted ascending. T must be cmp.Ordered.
+// Input not mutated.
+func Sort[T cmp.Ordered](s []T) []T
+
+// SortDesc returns a new slice sorted descending. T must be cmp.Ordered.
+func SortDesc[T cmp.Ordered](s []T) []T
+
+// SortBy returns a new slice sorted by a caller-supplied comparator.
+// T is any; less must return negative/zero/positive for a<b / a==b / a>b.
+func SortBy[T any](s []T, less func(a, b T) int) []T
+
+// =========================================================================
+// Zero stripping (T comparable)
+// =========================================================================
+
+// Compact returns a new slice with zero values of T removed.
+// Distinct from stdlib slices.Compact, which removes consecutive duplicates.
+func Compact[T comparable](s []T) []T
+
+// =========================================================================
+// Substitution (T comparable)
+// =========================================================================
+
+// Replace returns a new slice with every occurrence of old replaced.
+func Replace[T comparable](s []T, old, newVal T) []T
+
+// ReplaceFirst returns a new slice with the first occurrence of old replaced.
+func ReplaceFirst[T comparable](s []T, old, newVal T) []T
 ```
 
 ## 🤝 Contributing
