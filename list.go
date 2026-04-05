@@ -26,7 +26,7 @@
 //   - Unique cannot deduplicate NaN values
 //   - Union cannot deduplicate NaN values across slices
 //   - Intersect can never match NaN against NaN
-//   - SymmetricDifference treats every NaN as distinct
+//   - SymmetricDifference cannot pair NaN values (every NaN is distinct)
 //   - Minus cannot remove NaN values
 //   - Without cannot remove NaN values
 //
@@ -53,7 +53,10 @@ func Unique[T comparable](s []T) []T {
 		return []T{}
 	}
 	seen := make(map[T]struct{}, len(s))
-	result := make([]T, 0, len(s))
+	// Start result with zero capacity; append grows it on demand. This avoids
+	// holding a backing array sized for the worst case when most elements
+	// are duplicates.
+	result := make([]T, 0)
 	for _, v := range s {
 		if _, exists := seen[v]; !exists {
 			seen[v] = struct{}{}
@@ -72,7 +75,9 @@ func Union[T comparable](slices ...[]T) []T {
 		total += len(s)
 	}
 	seen := make(map[T]struct{}, total)
-	result := make([]T, 0, total)
+	// Zero initial cap: sum-of-lengths overallocates heavily when slices
+	// overlap. Append grows on demand.
+	result := make([]T, 0)
 	for _, s := range slices {
 		for _, v := range s {
 			if _, exists := seen[v]; !exists {
@@ -87,6 +92,8 @@ func Union[T comparable](slices ...[]T) []T {
 // Intersect returns the unique elements present in every provided slice.
 // Order is taken from the first slice. Variadic — a single-slice call
 // is equivalent to Unique; a zero-slice call returns an empty slice.
+// A nil or empty slice anywhere in the input causes the result to be
+// empty, since no element can appear in every slice.
 func Intersect[T comparable](slices ...[]T) []T {
 	if len(slices) == 0 {
 		return []T{}
@@ -96,10 +103,17 @@ func Intersect[T comparable](slices ...[]T) []T {
 	}
 
 	// Count how many slices each element appears in, counting each
-	// element at most once per slice.
+	// element at most once per slice. A single `seen` map is allocated
+	// once and reused across iterations via clear() to avoid per-slice
+	// map allocation.
 	counts := make(map[T]int, len(slices[0]))
+	var seen map[T]struct{}
 	for i, s := range slices {
-		seen := make(map[T]struct{}, len(s))
+		if seen == nil {
+			seen = make(map[T]struct{}, len(s))
+		} else {
+			clear(seen)
+		}
 		for _, v := range s {
 			if _, exists := seen[v]; exists {
 				continue
@@ -148,26 +162,22 @@ func SymmetricDifference[T comparable](a, b []T) []T {
 	for _, v := range b {
 		inB[v] = struct{}{}
 	}
-	result := make([]T, 0, len(a)+len(b))
-	emitted := make(map[T]struct{}, len(a)+len(b))
+	// Two maps suffice: inB doubles as the "skip set" while iterating a
+	// (skip if v is in b, otherwise emit and add to inB to dedupe further
+	// occurrences in a). Symmetrically, inA is reused while iterating b.
+	result := make([]T, 0)
 	for _, v := range a {
-		if _, both := inB[v]; both {
+		if _, skip := inB[v]; skip {
 			continue
 		}
-		if _, done := emitted[v]; done {
-			continue
-		}
-		emitted[v] = struct{}{}
+		inB[v] = struct{}{} // mark emitted so later duplicates in a are skipped
 		result = append(result, v)
 	}
 	for _, v := range b {
-		if _, both := inA[v]; both {
+		if _, skip := inA[v]; skip {
 			continue
 		}
-		if _, done := emitted[v]; done {
-			continue
-		}
-		emitted[v] = struct{}{}
+		inA[v] = struct{}{} // mark emitted so later duplicates in b are skipped
 		result = append(result, v)
 	}
 	return result
@@ -213,9 +223,9 @@ func Without[T comparable](s []T, items ...T) []T {
 		return []T{}
 	}
 	if len(items) == 0 {
-		result := make([]T, len(s))
-		copy(result, s)
-		return result
+		// len(s) > 0 from the check above, so append returns a fresh,
+		// non-nil slice (preserving the no-alias contract).
+		return append([]T(nil), s...)
 	}
 	exclude := make(map[T]struct{}, len(items))
 	for _, v := range items {

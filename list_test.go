@@ -928,3 +928,177 @@ func TestComposition_UniqueExcludingStopwords(t *testing.T) {
 		t.Errorf("got %v, want %v", significant, want)
 	}
 }
+
+// TestIntersect_FirstSliceEmpty covers the edge of the counting loop: when
+// slice 0 is empty or nil, counts is never populated, so no element can
+// reach the "present in every slice" threshold. The result must be an
+// empty (non-nil) slice, not a panic and not stray entries from later
+// slices.
+func TestIntersect_FirstSliceEmpty(t *testing.T) {
+	t.Run("empty first slice", func(t *testing.T) {
+		got := list.Intersect([]int{}, []int{1, 2, 3}, []int{1, 2, 3})
+		if got == nil {
+			t.Fatal("expected non-nil empty slice")
+		}
+		if len(got) != 0 {
+			t.Errorf("got %v, want empty", got)
+		}
+	})
+	t.Run("nil first slice", func(t *testing.T) {
+		got := list.Intersect[int](nil, []int{1, 2, 3}, []int{1, 2, 3})
+		if got == nil {
+			t.Fatal("expected non-nil empty slice")
+		}
+		if len(got) != 0 {
+			t.Errorf("got %v, want empty", got)
+		}
+	})
+	t.Run("single empty slice", func(t *testing.T) {
+		// One-slice call is equivalent to Unique: empty in → empty out.
+		got := list.Intersect([]int{})
+		if got == nil {
+			t.Fatal("expected non-nil empty slice")
+		}
+		if len(got) != 0 {
+			t.Errorf("got %v, want empty", got)
+		}
+	})
+}
+
+// FuzzIntersect verifies Intersect against a reference implementation
+// across arbitrary byte-derived int inputs split into two slices. Covers
+// the trickier counting-and-emit algorithm that plain example tests can't
+// exhaust.
+func FuzzIntersect(f *testing.F) {
+	f.Add([]byte{1, 2, 3, 4}, []byte{3, 4, 5, 6})
+	f.Add([]byte{}, []byte{1, 2, 3})
+	f.Add([]byte{1, 1, 1}, []byte{1})
+	f.Add([]byte{1, 2, 3}, []byte{})
+	f.Add([]byte{1, 2, 3, 4, 5}, []byte{5, 4, 3, 2, 1})
+
+	f.Fuzz(func(t *testing.T, a, b []byte) {
+		inA := make([]int, len(a))
+		for i, v := range a {
+			inA[i] = int(v)
+		}
+		inB := make([]int, len(b))
+		for i, v := range b {
+			inB[i] = int(v)
+		}
+
+		got := list.Intersect(inA, inB)
+
+		if got == nil {
+			t.Fatal("Intersect returned nil; contract is non-nil empty")
+		}
+
+		// Reference: elements in first-occurrence order from inA that also
+		// appear in inB, deduped.
+		bSet := make(map[int]struct{}, len(inB))
+		for _, v := range inB {
+			bSet[v] = struct{}{}
+		}
+		seen := make(map[int]struct{}, len(inA))
+		want := make([]int, 0)
+		for _, v := range inA {
+			if _, ok := bSet[v]; !ok {
+				continue
+			}
+			if _, dup := seen[v]; dup {
+				continue
+			}
+			seen[v] = struct{}{}
+			want = append(want, v)
+		}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Intersect(%v, %v) = %v, reference = %v", inA, inB, got, want)
+		}
+
+		// Invariants: no dupes, every element present in both inputs.
+		resSeen := make(map[int]struct{}, len(got))
+		for _, v := range got {
+			if _, dup := resSeen[v]; dup {
+				t.Fatalf("Intersect returned duplicate %v: %v", v, got)
+			}
+			resSeen[v] = struct{}{}
+			if _, ok := bSet[v]; !ok {
+				t.Fatalf("Intersect fabricated element %v not in b: %v", v, got)
+			}
+		}
+	})
+}
+
+// FuzzSymmetricDifference verifies SymmetricDifference against a reference
+// implementation. Exercises the two-map emission logic (in a but not b,
+// then in b but not a) with deduplication.
+func FuzzSymmetricDifference(f *testing.F) {
+	f.Add([]byte{1, 2, 3}, []byte{3, 4, 5})
+	f.Add([]byte{}, []byte{1, 2, 3})
+	f.Add([]byte{1, 2, 3}, []byte{})
+	f.Add([]byte{1, 1, 2, 2}, []byte{2, 2, 3, 3})
+	f.Add([]byte{1, 2, 3}, []byte{1, 2, 3})
+
+	f.Fuzz(func(t *testing.T, a, b []byte) {
+		inA := make([]int, len(a))
+		for i, v := range a {
+			inA[i] = int(v)
+		}
+		inB := make([]int, len(b))
+		for i, v := range b {
+			inB[i] = int(v)
+		}
+
+		got := list.SymmetricDifference(inA, inB)
+
+		if got == nil {
+			t.Fatal("SymmetricDifference returned nil; contract is non-nil empty")
+		}
+
+		// Reference: (a \ b) in a's first-occurrence order, then (b \ a)
+		// in b's first-occurrence order, deduped.
+		aSet := make(map[int]struct{}, len(inA))
+		for _, v := range inA {
+			aSet[v] = struct{}{}
+		}
+		bSet := make(map[int]struct{}, len(inB))
+		for _, v := range inB {
+			bSet[v] = struct{}{}
+		}
+		seen := make(map[int]struct{})
+		want := make([]int, 0)
+		for _, v := range inA {
+			if _, inB := bSet[v]; inB {
+				continue
+			}
+			if _, dup := seen[v]; dup {
+				continue
+			}
+			seen[v] = struct{}{}
+			want = append(want, v)
+		}
+		for _, v := range inB {
+			if _, inA := aSet[v]; inA {
+				continue
+			}
+			if _, dup := seen[v]; dup {
+				continue
+			}
+			seen[v] = struct{}{}
+			want = append(want, v)
+		}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("SymmetricDifference(%v, %v) = %v, reference = %v", inA, inB, got, want)
+		}
+
+		// Invariant: no element of the result appears in BOTH inputs.
+		for _, v := range got {
+			_, inA := aSet[v]
+			_, inB := bSet[v]
+			if inA && inB {
+				t.Fatalf("SymmetricDifference emitted %v which is in both inputs", v)
+			}
+		}
+	})
+}
