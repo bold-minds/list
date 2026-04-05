@@ -10,7 +10,7 @@ Every contribution is measured against the four Bold Minds principles: **outcome
 
 ## 🔧 Development Setup
 
-**Requirements:** Go 1.26 or later, Git, Bash.
+**Requirements:** Go 1.21 or later, Git, Bash.
 
 ```bash
 git clone https://github.com/bold-minds/list.git

@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bold-minds/list.svg)](https://pkg.go.dev/github.com/bold-minds/list)
-[![Go Version](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/list/main/.github/badges/go-version.json)](https://golang.org/doc/go1.26)
+[![Go Version](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/list/main/.github/badges/go-version.json)](https://golang.org/doc/go1.21)
 [![Latest Release](https://img.shields.io/github/v/release/bold-minds/list?logo=github&color=blueviolet)](https://github.com/bold-minds/list/releases)
 [![Last Updated](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/list/main/.github/badges/last-updated.json)](https://github.com/bold-minds/list/commits)
 [![golangci-lint](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/list/main/.github/badges/golangci-lint.json)](https://github.com/bold-minds/list/actions/workflows/test.yaml)
@@ -40,7 +40,7 @@ unique := list.Unique(tags)
 go get github.com/bold-minds/list
 ```
 
-Requires Go 1.26 or later.
+Requires Go 1.21 or later.
 
 ## 🚀 Quick Start
 
@@ -176,7 +176,7 @@ Go's `comparable` constraint is checked at compile time, but interface types can
 
 ## 🏎️ Performance
 
-Measured on Go 1.26 (Intel Ultra 9 275HX). All operations are O(n) in total input size.
+Measured on Go 1.26 (Intel Ultra 9 275HX; library targets Go 1.21+). All operations are O(n) in total input size.
 
 ```
 BenchmarkUnique_Small-24             2087532    279.4 ns/op    408 B/op    4 allocs/op

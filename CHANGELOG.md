@@ -27,4 +27,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No NaN-aware float operations — caller must pre-process slices if NaN matching is required
 
 ### Requires
-- Go 1.26 or later
+- Go 1.21 or later
