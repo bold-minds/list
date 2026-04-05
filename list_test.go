@@ -1151,6 +1151,93 @@ func TestLastN(t *testing.T) {
 	}
 }
 
+func TestDropL(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5}
+
+	// Happy path: drop first 2 leaves last 3.
+	if got := list.DropL(s, 2); !reflect.DeepEqual(got, []int{3, 4, 5}) {
+		t.Errorf("DropL(2) = %v, want [3 4 5]", got)
+	}
+	// Complementary with FirstN: DropL(n) + FirstN(n) should reconstruct s.
+	head := list.FirstN(s, 2)
+	tail := list.DropL(s, 2)
+	together := append([]int{}, head...)
+	together = append(together, tail...)
+	if !reflect.DeepEqual(together, s) {
+		t.Errorf("FirstN(2) ++ DropL(2) = %v, want %v", together, s)
+	}
+	// n = 0 returns a full copy.
+	got := list.DropL(s, 0)
+	if !reflect.DeepEqual(got, s) {
+		t.Errorf("DropL(0) = %v, want full copy %v", got, s)
+	}
+	// n < 0 treated same as 0.
+	if got := list.DropL(s, -3); !reflect.DeepEqual(got, s) {
+		t.Errorf("DropL(-3) = %v, want full copy", got)
+	}
+	// n >= len returns empty, not nil.
+	if got := list.DropL(s, 5); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("DropL(len) = %v, want []", got)
+	}
+	if got := list.DropL(s, 100); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("DropL(beyond len) = %v, want []", got)
+	}
+	// Nil input.
+	if got := list.DropL[int](nil, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("DropL(nil, 2) = %v, want []", got)
+	}
+	// Empty input.
+	if got := list.DropL([]int{}, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("DropL(empty, 2) = %v, want []", got)
+	}
+	// Result must not alias input.
+	out := list.DropL(s, 2)
+	out[0] = 999
+	if s[2] == 999 {
+		t.Error("DropL result aliases input")
+	}
+}
+
+func TestDropR(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5}
+
+	if got := list.DropR(s, 2); !reflect.DeepEqual(got, []int{1, 2, 3}) {
+		t.Errorf("DropR(2) = %v, want [1 2 3]", got)
+	}
+	// Complementary with LastN: DropR(n) + LastN(n) should reconstruct s.
+	head := list.DropR(s, 2)
+	tail := list.LastN(s, 2)
+	together := append([]int{}, head...)
+	together = append(together, tail...)
+	if !reflect.DeepEqual(together, s) {
+		t.Errorf("DropR(2) ++ LastN(2) = %v, want %v", together, s)
+	}
+	if got := list.DropR(s, 0); !reflect.DeepEqual(got, s) {
+		t.Errorf("DropR(0) = %v, want full copy", got)
+	}
+	if got := list.DropR(s, -1); !reflect.DeepEqual(got, s) {
+		t.Errorf("DropR(-1) = %v, want full copy", got)
+	}
+	if got := list.DropR(s, 5); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("DropR(len) = %v, want []", got)
+	}
+	if got := list.DropR(s, 100); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("DropR(beyond len) = %v, want []", got)
+	}
+	if got := list.DropR[int](nil, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("DropR(nil, 2) = %v, want []", got)
+	}
+	if got := list.DropR([]int{}, 2); !reflect.DeepEqual(got, []int{}) {
+		t.Errorf("DropR(empty, 2) = %v, want []", got)
+	}
+	// Result must not alias input.
+	out := list.DropR(s, 2)
+	out[0] = 999
+	if s[0] == 999 {
+		t.Error("DropR result aliases input")
+	}
+}
+
 func TestBetween(t *testing.T) {
 	s := []int{10, 20, 30, 40, 50}
 	if got := list.Between(s, 1, 4); !reflect.DeepEqual(got, []int{20, 30, 40}) {

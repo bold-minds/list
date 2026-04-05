@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-04-05
+
+### Added
+
+- **`DropL[T any](s []T, n int) []T`** — returns a new slice with the first n elements removed. Complement of `FirstN`: `FirstN` keeps the head, `DropL` discards it. Clamps on out-of-range n; never panics.
+- **`DropR[T any](s []T, n int) []T`** — returns a new slice with the last n elements removed. Complement of `LastN`.
+
+Together these complete the positional-extraction foursome: `FirstN` / `LastN` take from the head/tail, `DropL` / `DropR` drop from the head/tail. The concatenation invariants `FirstN(s, n) ++ DropL(s, n) == s` and `DropR(s, n) ++ LastN(s, n) == s` are locked in by regression tests.
+
 ## [0.2.0] — 2026-04-05
 
 ### Changed

@@ -298,6 +298,42 @@ func LastN[T any](s []T, n int) []T {
 	return append([]T(nil), s[len(s)-n:]...)
 }
 
+// DropL returns a new slice with the first n elements removed. It is
+// the complement of FirstN: FirstN keeps the head, DropL discards it.
+// If n <= 0, DropL returns a full copy of s. If n >= len(s), it
+// returns an empty slice. Input is never mutated.
+//
+//	list.DropL([]int{1, 2, 3, 4, 5}, 2) // [3 4 5]
+//	list.DropL([]int{1, 2, 3}, 10)      // []
+//	list.DropL([]int{1, 2, 3}, 0)       // [1 2 3]
+func DropL[T any](s []T, n int) []T {
+	if n <= 0 {
+		return append([]T(nil), s...)
+	}
+	if n >= len(s) {
+		return []T{}
+	}
+	return append([]T(nil), s[n:]...)
+}
+
+// DropR returns a new slice with the last n elements removed. It is
+// the complement of LastN: LastN keeps the tail, DropR discards it.
+// If n <= 0, DropR returns a full copy of s. If n >= len(s), it
+// returns an empty slice. Input is never mutated.
+//
+//	list.DropR([]int{1, 2, 3, 4, 5}, 2) // [1 2 3]
+//	list.DropR([]int{1, 2, 3}, 10)      // []
+//	list.DropR([]int{1, 2, 3}, 0)       // [1 2 3]
+func DropR[T any](s []T, n int) []T {
+	if n <= 0 {
+		return append([]T(nil), s...)
+	}
+	if n >= len(s) {
+		return []T{}
+	}
+	return append([]T(nil), s[:len(s)-n]...)
+}
+
 // Between returns a new slice containing s[start:end], clamped to valid
 // bounds. Negative start is clamped to 0; end greater than len(s) is
 // clamped to len(s). If the resulting range is empty or inverted
